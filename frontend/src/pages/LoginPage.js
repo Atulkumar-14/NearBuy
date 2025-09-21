@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import api from '../utils/api';
+import Layout from '../components/layout/Layout';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      navigate('/');
+    }
+  }, [navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -24,16 +35,12 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', formData);
-      
-      // Store token in localStorage
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      
+      // Use the login function from AuthContext for regular users
+      await login(formData.email, formData.password);
       // Redirect to home page
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
       console.error('Login error:', err);
     } finally {
       setLoading(false);
@@ -41,8 +48,9 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <Layout>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to your account</h2>
           <p className="mt-2 text-center text-sm text-gray-600">
@@ -51,6 +59,7 @@ const LoginPage = () => {
               create a new account
             </Link>
           </p>
+
         </div>
         
         {error && (
@@ -140,6 +149,7 @@ const LoginPage = () => {
         </form>
       </div>
     </div>
+    </Layout>
   );
 };
 

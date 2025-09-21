@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from models import db, User, SearchHistory, ProductReview
 from werkzeug.security import generate_password_hash
+from utils.auth import token_required
 
 bp = Blueprint('users', __name__, url_prefix='/api/users')
 
@@ -97,6 +98,60 @@ def update_user(user_id):
         return jsonify({
             'message': 'User updated successfully',
             'user_id': user.user_id
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/profile', methods=['GET'])
+@token_required
+def get_profile(current_user):
+    try:
+        return jsonify({
+            'user_id': current_user.user_id,
+            'name': current_user.name,
+            'email': current_user.email,
+            'phone': current_user.phone,
+            'address': {
+                'street': '',
+                'area': '',
+                'city': '',
+                'state': '',
+                'pincode': ''
+            },
+            'created_at': current_user.created_at
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+        
+@bp.route('/profile', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    try:
+        data = request.get_json()
+        
+        if 'name' in data:
+            current_user.name = data['name']
+        if 'phone' in data:
+            current_user.phone = data['phone']
+        if 'email' in data:
+            current_user.email = data['email']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'user_id': current_user.user_id,
+            'name': current_user.name,
+            'email': current_user.email,
+            'phone': current_user.phone,
+            'address': {
+                'street': '',
+                'area': '',
+                'city': '',
+                'state': '',
+                'pincode': ''
+            },
+            'created_at': current_user.created_at
         })
     except Exception as e:
         db.session.rollback()

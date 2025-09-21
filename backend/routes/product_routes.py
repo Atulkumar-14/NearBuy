@@ -211,3 +211,90 @@ def add_review(current_user, product_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+# Add this new route to your existing product_routes.py file
+
+@bp.route('/nearby', methods=['GET'])
+def get_nearby_products():
+    try:
+        # Get location parameters
+        latitude = request.args.get('latitude', type=float)
+        longitude = request.args.get('longitude', type=float)
+        radius = request.args.get('radius', default=10, type=float)  # Default 10km radius
+        
+        if not latitude or not longitude:
+            return jsonify({'error': 'Latitude and longitude are required'}), 400
+        
+        # Use SQLAlchemy ORM approach instead of raw SQL
+        from sqlalchemy import text
+        
+        # First, get nearby shops
+        shops_query = text("""
+        SELECT s.shop_id, s.shop_name, sa.latitude, sa.longitude,
+               (6371 * ACOS(COS(RADIANS(:latitude)) * COS(RADIANS(sa.latitude)) * 
+                COS(RADIANS(sa.longitude) - RADIANS(:longitude)) + 
+                SIN(RADIANS(:latitude)) * SIN(RADIANS(sa.latitude)))) AS distance
+        FROM Shops s
+        JOIN Shop_Address sa ON s.shop_id = sa.shop_id
+        WHERE (6371 * ACOS(COS(RADIANS(:latitude)) * COS(RADIANS(sa.latitude)) * 
+              COS(RADIANS(sa.longitude) - RADIANS(:longitude)) + 
+              SIN(RADIANS(:latitude)) * SIN(RADIANS(sa.latitude)))) <= :radius
+        ORDER BY distance
+        """)
+        
+        shops_result = db.session.execute(shops_query, {
+            'latitude': latitude,
+            'longitude': longitude,
+            'radius': radius
+        })
+        
+        nearby_shops = []
+        for shop_row in shops_result:
+            nearby_shops.append({
+                'shop_id': shop_row.shop_id,
+                'shop_name': shop_row.shop_name,
+                'distance': float(shop_row.distance)
+            })
+        
+        if not nearby_shops:
+            return jsonify([])
+        
+        # Get products from nearby shops
+        shop_ids = [shop['shop_id'] for shop in nearby_shops]
+        shop_products = ShopProduct.query.filter(ShopProduct.shop_id.in_(shop_ids)).all()
+        
+        products = []
+        for sp in shop_products:
+            product = sp.product
+            shop = sp.shop
+            
+            # Find the distance for this shop
+            shop_distance = next((s['distance'] for s in nearby_shops if s['shop_id'] == shop.shop_id), 0)
+            
+            # Get product images
+            product_images = ProductImage.query.filter_by(product_id=product.product_id).all()
+            images = [img.image_url for img in product_images] if product_images else []
+            
+            product_data = {
+                'product_id': product.product_id,
+                'product_name': product.product_name,
+                'description': product.description,
+                'brand': product.brand,
+                'color': product.color,
+                'category_id': product.category_id,
+                'images': images,
+                'price': float(sp.price) if sp.price else 0.0,
+                'stock': sp.stock,
+                'shop_name': shop.shop_name,
+                'distance': shop_distance
+            }
+            products.append(product_data)
+        
+        # Sort by distance
+        products.sort(key=lambda x: x['distance'])
+        
+        return jsonify(products)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import config from '../utils/config';
 
 const AuthContext = createContext();
 
@@ -9,40 +10,68 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [loginSuccess, setLoginSuccess] = useState(false);
 
   useEffect(() => {
     // Check if user is already logged in
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (token && storedUser) {
-      try {
-        setCurrentUser(JSON.parse(storedUser));
-      } catch (err) {
-        console.error('Error parsing stored user:', err);
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
+    const checkAuthStatus = async () => {
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+      
+      if (token && storedUser) {
+        try {
+          // Validate token with backend
+          const response = await axios.get(`${config.API_URL}/auth/validate-token`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          if (response.data.valid) {
+            setCurrentUser(JSON.parse(storedUser));
+          } else {
+            // Token invalid, clear storage
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+          }
+        } catch (err) {
+          console.error('Error validating token:', err);
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+        }
       }
-    }
+      
+      setLoading(false);
+    };
     
-    setLoading(false);
+    checkAuthStatus();
   }, []);
+
+  // Auto-hide login success message after 3 seconds
+  useEffect(() => {
+    if (loginSuccess) {
+      const timer = setTimeout(() => {
+        setLoginSuccess(false);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loginSuccess]);
 
   const login = async (email, password) => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+      const response = await axios.post(`${config.API_URL}/auth/login`, { email, password });
       
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
       
       setCurrentUser(response.data.user);
+      setLoginSuccess(true);
       setLoading(false);
       return response.data;
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
       setLoading(false);
       throw err;
     }
@@ -53,12 +82,13 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', userData);
+      const response = await axios.post(`${config.API_URL}/auth/register`, userData);
       
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
       
       setCurrentUser(response.data.user);
+      setLoginSuccess(true);
       setLoading(false);
       return response.data;
     } catch (err) {
@@ -82,7 +112,7 @@ export const AuthProvider = ({ children }) => {
       const token = localStorage.getItem('token');
       
       const response = await axios.put(
-        'http://localhost:5000/api/users/profile',
+        `${config.API_URL}/users/profile`,
         userData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -102,6 +132,7 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     loading,
     error,
+    loginSuccess,
     login,
     register,
     logout,

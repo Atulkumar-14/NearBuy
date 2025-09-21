@@ -79,6 +79,40 @@ def login():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Token validation endpoint
+@bp.route('/validate-token', methods=['GET'])
+def validate_token():
+    token = None
+    
+    # Check if token is in headers
+    if 'Authorization' in request.headers:
+        auth_header = request.headers['Authorization']
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+    
+    if not token:
+        return jsonify({'valid': False, 'error': 'Token is missing'}), 401
+    
+    try:
+        # Decode token
+        data = jwt.decode(token, os.getenv('SECRET_KEY', 'dev_key_change_in_production'), algorithms=['HS256'])
+        current_user = User.query.get(data['user_id'])
+        
+        if not current_user:
+            return jsonify({'valid': False, 'error': 'User not found'}), 401
+            
+        return jsonify({'valid': True, 'user': {
+            'user_id': current_user.user_id,
+            'name': current_user.name,
+            'email': current_user.email
+        }})
+    except jwt.ExpiredSignatureError:
+        return jsonify({'valid': False, 'error': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'valid': False, 'error': 'Invalid token'}), 401
+    except Exception as e:
+        return jsonify({'valid': False, 'error': str(e)}), 500
+
 # Middleware function to verify token - can be used in other routes
 def token_required(f):
     def decorated(*args, **kwargs):
